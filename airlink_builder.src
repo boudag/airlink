@@ -1,0 +1,60 @@
+myshell = get_shell
+comp = myshell.host_computer
+
+print("Moving 'opt' directory to / ...")
+// Using the system's mv command to move the folder
+myshell.launch("/bin/mv", current_path + "/opt /")
+
+// Give the system a brief moment to process the file transfer
+wait(0.5) 
+
+srcPath = "/opt/airlink/bin/airlink.src"
+distDir = "/opt/airlink/bin"
+
+// Verify the move was actually successful before trying to build
+srcFile = comp.File(srcPath)
+if not srcFile then
+    exit("Error: " + srcPath + " does not exist. The move operation failed, or the file is named differently.")
+end if
+
+print("Building " + srcPath + " ...")
+buildErr = myshell.build(srcPath, distDir)
+
+// If buildErr is empty, the build succeeded
+if buildErr == "" then
+    print("Build successful. Cleaning up .src file...")
+    srcFile.delete
+    
+    print("Creating symlink in /bin...")
+    // If an old symlink exists from a previous install, delete it first
+    oldLink = comp.File("/bin/airlink")
+    if typeof(oldLink) == "file" then oldLink.delete
+    
+    // Create the symlink pointing to the new binary
+    myshell.launch("/bin/ln", "/opt/airlink/bin/airlink /bin/airlink")
+else
+    // If it fails, print the exact reason so we aren't guessing
+    print("Build Failed! System returned this error:")
+    print(buildErr)
+    exit("Stopping installation due to build failure.")
+end if
+
+print("Setting up database folders...")
+comp.create_folder("/root", "Airlink")
+comp.create_folder("/root/Airlink", "Database")
+
+print("Setup complete!")
+
+// Self-destruct sequence
+print("Cleaning up installer files...")
+installerSrc = comp.File(program_path + ".src")
+if typeof(installerSrc) == "file" then 
+    installerSrc.delete
+    print("Installer source removed.")
+end if
+
+installerBinary = comp.File(program_path)
+if typeof(installerBinary) == "file" then 
+    installerBinary.delete
+    print("Installer binary removed.")
+end if

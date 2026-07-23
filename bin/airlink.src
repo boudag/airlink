@@ -14,9 +14,10 @@
             paramInfo.push("Cycle Adaptor".color(helpMenuItemColor) + "      [TAB]".color(helpMenuKeyColor))
             paramInfo.push("Exit the Program".color(helpMenuItemColor) + "   [ESC]".color(helpMenuKeyColor))
             paramInfo.push("Scroll Up".color(helpMenuItemColor) + "          [UpArrow]".color(helpMenuKeyColor))
-            paramInfo.push("Scroll Down".color(helpMenuItemColor) + "        [DownArrow".color(helpMenuKeyColor))
+            paramInfo.push("Scroll Down".color(helpMenuItemColor) + "        [DownArrow]".color(helpMenuKeyColor))
             paramInfo.push(" ")
             paramInfo.push("Crack / Connect".color(helpMenuItemColor) + "    [RightArrow]".color(helpMenuKeyColor))
+            paramInfo.push("Auto-Crack All".color(helpMenuItemColor) + "     [F3]".color(helpMenuKeyColor))
             paramInfo.push("Open Password File".color(helpMenuItemColor) + " [Insert]".color(helpMenuKeyColor))
             paramInfo.push("Toggle Theme Menu".color(helpMenuItemColor) + "  [F2]".color(helpMenuKeyColor))
             for info in paramInfo
@@ -303,6 +304,72 @@
 				hopConnections = false
 			end if            
         end if
+
+        // NEW F3 AUTO-CRACK BLOCK
+        if userInput == "F3" then
+            if typeof(Crypto) != "cryptoLib" then
+                ux_layer_1[12] = ("cryptoLib required!".bold.color(failColor).pos("1em"))
+                continue
+            end if
+
+            if Crypto.airmon("start", network_device_list[interfaceSelection][0]) != 1 then
+                ux_layer_1[12] = ("Unable to start monitor mode".bold.color(failColor).pos("1em"))
+                continue
+            end if
+
+            // 1. Build a list of maps to sort by signal strength
+            sortedNets = []
+            for net in getBroadcasts
+                parts = net.split(" ")
+                pwr = to_int(parts[1].remove("%"))
+                sortedNets.push({"bssid": parts[0], "pwr": pwr, "essid": parts[2], "raw": net})
+            end for
+            
+            // 2. Sort ascending by power, then reverse for descending
+            sortedNets.sort("pwr")
+            sortedNets.reverse
+
+            // 3. Iterate through sorted list and crack missing passwords
+            for target in sortedNets
+                hasEntry = false
+                if shadowContent.len > 0 then
+                    for wifi in shadowList
+                        shadowPart = wifi.split(" ")
+                        if shadowPart[2].trim == target.essid.trim then
+                            hasEntry = true
+                            break
+                        end if
+                    end for
+                end if
+
+                // Crack if not in database
+                if not hasEntry then
+                    print("Auto-Cracking: " + target.essid + " (" + target.pwr + "%)", true)
+                    reqAcks = get_acks(target.pwr)
+                    Crypto.aireplay(target.bssid, target.essid, reqAcks)
+                    pass = Crypto.aircrack(current_path + "/file.cap")
+                    
+                    if pass then
+                        capFile = myComputer.File(current_path + "/file.cap")
+                        if capFile then capFile.delete
+                        
+                        newEntry = target.bssid + " " + target.pwr + "% " + target.essid + " " + pass
+                        if shadowContent then
+                            shadowContent = shadowContent + char(10) + newEntry
+                        else
+                            shadowContent = newEntry
+                        end if
+                        
+                        shadowFile.set_content(shadowContent)
+                        shadowList = (shadowContent.split(char(10))).crop
+                        lastPassword = pass
+                        lastNetwork = target.essid
+                    end if
+                end if
+            end for
+        end if
+        // END F3 AUTO-CRACK BLOCK
+
 		if userInput == "Home" then
 			myShell.launch("/usr/bin/Browser.exe", publicRouter.public_ip + ":80")
 		end if        
@@ -374,8 +441,6 @@
             end if
         end if
 
-
-
         ux_layer_1[1] = ((("Signal").underline.pos(str(poz) + "em") + ("eSSID").underline.pos(str(poy) + "em") + ("bSSID / Public IP").underline.pos(str(pox) + "em")).color(defaultTextColor))
 
         // Ensure wifiIndex stays within valid bounds
@@ -406,6 +471,7 @@
             ux_layer_1[7] = ("Scroll Down        [DownArrow]").color(defaultTextColor).pos("2em")
             ux_layer_1[9] = ("Select Option      [RightArrow]").color(defaultTextColor).pos("2em")
             ux_layer_1[10] = ("Open Password File [Insert] Open Theme File").color(defaultTextColor).pos("2em")
+            ux_layer_1[11] = ("Auto-Crack All     [F3]").color(defaultTextColor).pos("2em")
             ux_layer_1[12] = ("Browser IP Address [Home]").color(defaultTextColor).pos("2em")
         else if showThemeList == true then
             themeDirectory = myComputer.File(home_dir + "/Airlink/Theme")
@@ -627,4 +693,4 @@
     outputBuffer = []
 	wait(0.1)
 	knownPass = "unknown"
-    end while        
+    end while
